@@ -16,6 +16,8 @@ curl -fsS http://localhost:5173/api/health
 
 Both requests should return `{"status":"ok","database":"connected"}`. Compose waits for MySQL before starting Laravel, then waits for Laravel before starting React. Use `docker compose logs -f` to follow startup logs.
 
+The Laravel starter is API-only. Its sole initial route is `GET /api/health`. The web welcome page, file-serving routes, and demo migrations are omitted. Laravel uses its built-in configuration defaults with the local environment settings.
+
 ## Versions
 
 The defaults select `php:cli`, the latest stable compatible Laravel, `react@latest`, and `mysql:latest`. To pin versions, set them in `docker/.env` or pass them before the startup command. For example, from this directory:

@@ -40,17 +40,71 @@ if [ "$version" != latest ]; then
     esac
     composer require --no-update --no-interaction "laravel/framework:$constraint"
 fi
-composer update --no-install --no-scripts --no-interaction
-
 php <<'PHP'
 <?php
-$path = 'bootstrap/app.php';
-$bootstrap = str_replace('->withRouting(', "->withRouting(\n        api: __DIR__.'/../routes/api.php',", file_get_contents($path), $count);
-if ($count !== 1) {
-    fwrite(STDERR, "The Laravel starter must support withRouting().\n");
-    exit(1);
-}
-file_put_contents($path, $bootstrap);
+$path = 'composer.json';
+$manifest = json_decode(file_get_contents($path), flags: JSON_THROW_ON_ERROR);
+unset(
+    $manifest->require->{'laravel/tinker'},
+    $manifest->{'require-dev'}->{'fakerphp/faker'},
+    $manifest->{'require-dev'}->{'laravel/pail'},
+    $manifest->{'require-dev'}->{'laravel/pao'},
+    $manifest->scripts->setup,
+    $manifest->scripts->dev,
+    $manifest->scripts->{'post-update-cmd'},
+    $manifest->scripts->{'post-create-project-cmd'},
+);
+file_put_contents($path, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR).PHP_EOL);
+PHP
+
+rm -f .npmrc AGENTS.md CLAUDE.md README.md package.json vite.config.js \
+    app/Models/User.php app/Providers/AppServiceProvider.php \
+    config/app.php config/auth.php config/cache.php config/database.php config/logging.php \
+    config/mail.php config/queue.php config/services.php config/session.php \
+    database/factories/UserFactory.php database/seeders/DatabaseSeeder.php \
+    database/migrations/0001_01_01_000000_create_users_table.php \
+    database/migrations/0001_01_01_000001_create_cache_table.php \
+    database/migrations/0001_01_01_000002_create_jobs_table.php \
+    public/.htaccess public/favicon.ico public/robots.txt \
+    resources/css/app.css resources/js/app.js resources/js/bootstrap.js resources/views/welcome.blade.php \
+    routes/console.php routes/web.php tests/Feature/ExampleTest.php tests/Unit/ExampleTest.php
+
+cat > bootstrap/app.php <<'PHP'
+<?php
+
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Http\Request;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(api: __DIR__.'/../routes/api.php')
+    ->withMiddleware()
+    ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(
+            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
+        );
+    })
+    ->create();
+PHP
+
+cat > bootstrap/providers.php <<'PHP'
+<?php
+
+return [];
+PHP
+
+cat > config/filesystems.php <<'PHP'
+<?php
+
+return [
+    'disks' => [
+        'local' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private'),
+            'serve' => false,
+        ],
+    ],
+];
 PHP
 
 cat > routes/api.php <<'PHP'
@@ -93,6 +147,8 @@ node_modules/
 bootstrap/cache/
 storage/
 IGNORE
+
+composer update --no-install --no-scripts --no-interaction
 
 exec tar -cf - . >&3
 SCRIPT
