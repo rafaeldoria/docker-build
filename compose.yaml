@@ -1,0 +1,73 @@
+name: app_local
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/backend.Dockerfile
+      args:
+        PHP_VERSION: ${PHP_VERSION:-cli}
+    environment:
+      APP_URL: http://localhost:${BACKEND_PORT:?Set BACKEND_PORT in docker/.env}
+      DB_DATABASE: ${DB_DATABASE:?Set DB_DATABASE in docker/.env}
+      DB_USERNAME: ${DB_USERNAME:?Set DB_USERNAME in docker/.env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in docker/.env}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:?Set BACKEND_PORT in docker/.env}:8000"
+    volumes:
+      - type: bind
+        source: ../backend/.env
+        target: /app/.env
+        bind:
+          create_host_path: false
+      - ../backend/app:/app/app
+      - ../backend/config:/app/config
+      - ../backend/database:/app/database
+      - ../backend/routes:/app/routes
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8000/api/health') === false ? 1 : 0);"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend.Dockerfile
+    env_file: ../frontend/.env
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:?Set FRONTEND_PORT in docker/.env}:5173"
+    volumes:
+      - ../frontend/src:/app/src
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  db:
+    image: mysql:${MYSQL_VERSION:-latest}
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:?Set DB_DATABASE in docker/.env}
+      MYSQL_USER: ${DB_USERNAME:?Set DB_USERNAME in docker/.env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in docker/.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in docker/.env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP --host=127.0.0.1
+          --user="$${MYSQL_USER}" --database="$${MYSQL_DATABASE}" --execute='SELECT 1'
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 20
+
+volumes:
+  mysql-data:
+    name: ${COMPOSE_PROJECT_NAME}_mysql-data-${MYSQL_VERSION:-latest}
